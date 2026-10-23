@@ -2504,20 +2504,30 @@ export class AdbProvider {
           { device: input.serial, path: devicePath },
           selection.binary,
           adbArguments(input.serial, ["shell", "sha256sum", devicePath]),
-          { timeoutMs: SHELL_TIMEOUT_MS, maxOutputBytes: 1024 },
+          {
+            timeoutMs: SHELL_TIMEOUT_MS,
+            // sha256sum echoes the path, escaping special characters, so a
+            // long path must not exhaust the budget for the digest line.
+            maxOutputBytes: 1024 + 2 * Buffer.byteLength(devicePath),
+          },
           signal,
         );
         if (!deviceDigest.ok) {
           const cancelled =
             deviceDigest.error instanceof AnalysisCancelledError;
+          // An answer too large to read is not an absent sha256sum command.
+          const oversized =
+            deviceDigest.error instanceof AnalysisResourceConstraintError;
           const completed = receipt({
             device_sha256: null,
             device_digest_source: "unavailable",
             reason: cancelled
               ? "The device-side digest check was cancelled after push completed"
-              : "The device did not answer sha256sum, so the transfer is not device-side verified",
+              : oversized
+                ? "The device's sha256sum answer exceeded the capture budget after push completed"
+                : "The device did not answer sha256sum, so the transfer is not device-side verified",
           });
-          if (cancelled)
+          if (cancelled || oversized)
             deviceDigest.error.retainPartialObservation(
               createEvidence(
                 completed.subject ?? undefined,
@@ -2533,7 +2543,9 @@ export class AdbProvider {
                 },
               ),
             );
-          return cancelled ? err(deviceDigest.error) : ok(completed);
+          return cancelled || oversized
+            ? err(deviceDigest.error)
+            : ok(completed);
         }
         const parsedDigest = parseSha256sumOutput(deviceDigest.value.stdout);
         const completed =
