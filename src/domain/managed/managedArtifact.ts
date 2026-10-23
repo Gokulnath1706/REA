@@ -345,9 +345,16 @@ const managedNativeImplementationSchema = z.object({
   ]),
 });
 
+const managedSiteOffsetSchema = managedInstructionAnchorSchema.shape.il_offset
+  .exactOptional()
+  .describe(
+    "Byte offset in the owning method's IL body; absent in older Evidence",
+  );
+
 const managedCallEdgeSchema = z.object({
   caller_token: managedMetadataTokenSchema,
   caller: z.string().nullable(),
+  il_offset: managedSiteOffsetSchema,
   opcode: z.string(),
   target_token: managedMetadataTokenSchema,
   target_kind: z.enum(["method-def", "member-ref", "method-spec", "unknown"]),
@@ -363,6 +370,7 @@ const managedCallEdgeSchema = z.object({
 const managedFieldAccessSchema = z.object({
   method_token: managedMetadataTokenSchema,
   method: z.string().nullable(),
+  il_offset: managedSiteOffsetSchema,
   opcode: z.string(),
   field_token: managedMetadataTokenSchema,
   field_name: z.string().nullable(),
